@@ -6,6 +6,8 @@ from audio_recorder_streamlit import audio_recorder
 import speech_recognition as sr
 import io
 from pydub import AudioSegment
+import pyttsx3
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -76,6 +78,24 @@ if "language" not in st.session_state:
 if "command_executed" not in st.session_state:
     st.session_state.command_executed = False
 
+if "tts_audio" not in st.session_state:
+    st.session_state.tts_audio = {}
+
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+
+if "last_audio_bytes" not in st.session_state:
+    st.session_state.last_audio_bytes = None
+
+if "quick_response_mode" not in st.session_state:
+    st.session_state.quick_response_mode = False
+
+if "conversation_turn_count" not in st.session_state:
+    st.session_state.conversation_turn_count = 0
+
+if "tts_speed" not in st.session_state:
+    st.session_state.tts_speed = 180  # Default speaking rate (words per minute)
+
 # Language configurations
 LANGUAGES = {
     "English": "en-US",
@@ -90,13 +110,65 @@ LANGUAGES = {
     "Russian": "ru-RU"
 }
 
+# Language mapping for TTS (macOS 'say' command voices)
+TTS_VOICES = {
+    "en-US": "Samantha",  # English
+    "es-ES": "Mónica",    # Spanish (note: accent required)
+    "fr-FR": "Thomas",    # French
+    "de-DE": "Anna",      # German
+    "zh-CN": "Tingting",  # Chinese (Mandarin) - one word
+    "ja-JP": "Kyoko",     # Japanese
+    "ko-KR": "Yuna",      # Korean
+    "it-IT": "Alice",     # Italian
+    "pt-BR": "Luciana",   # Portuguese (Brazil)
+    "ru-RU": "Milena"     # Russian
+}
+
+# Language display names with flags
+LANGUAGE_FLAGS = {
+    "English": "🇺🇸",
+    "Spanish": "🇪🇸",
+    "French": "🇫🇷",
+    "German": "🇩🇪",
+    "Chinese (Mandarin)": "🇨🇳",
+    "Japanese": "🇯🇵",
+    "Korean": "🇰🇷",
+    "Italian": "🇮🇹",
+    "Portuguese": "🇧🇷",
+    "Russian": "🇷🇺"
+}
+
 def process_voice_command(text):
     """Process voice commands and return command type and parameters"""
     text_lower = text.lower().strip()
 
+    # Remove wake words if present
+    wake_words = ["hey assistant", "hey chatbot", "ok assistant"]
+    for wake in wake_words:
+        if text_lower.startswith(wake):
+            text_lower = text_lower[len(wake):].strip()
+
+    # Help command
+    if any(cmd in text_lower for cmd in ["help", "commands", "what can you do", "show commands"]):
+        return "help", None
+
     # Clear chat command
-    if "clear chat" in text_lower or "clear history" in text_lower or "clear conversation" in text_lower:
+    if any(cmd in text_lower for cmd in ["clear chat", "clear history", "clear conversation", "reset chat", "new conversation"]):
         return "clear_chat", None
+
+    # Stop audio command
+    if any(cmd in text_lower for cmd in ["stop talking", "stop speaking", "stop audio", "be quiet", "silence"]):
+        return "stop_audio", None
+
+    # TTS speed commands
+    if any(cmd in text_lower for cmd in ["speak faster", "talk faster", "speed up"]):
+        return "speed_up", None
+
+    if any(cmd in text_lower for cmd in ["speak slower", "talk slower", "slow down"]):
+        return "slow_down", None
+
+    if any(cmd in text_lower for cmd in ["normal speed", "reset speed", "default speed"]):
+        return "normal_speed", None
 
     # Personality change command
     personality_keywords = {
@@ -107,12 +179,160 @@ def process_voice_command(text):
         "game": "Gaming Helper"
     }
 
-    if "change personality" in text_lower or "switch personality" in text_lower or "change to" in text_lower or "switch to" in text_lower:
+    if any(cmd in text_lower for cmd in ["change personality", "switch personality", "change to", "switch to", "change mode"]):
         for keyword, personality in personality_keywords.items():
             if keyword in text_lower:
                 return "change_personality", personality
 
     return None, None
+
+def get_command_help_text():
+    """Return formatted help text for available voice commands"""
+    help_text = """**🎤 Available Voice Commands:**
+
+**Chat Control:**
+• "Clear chat" / "Reset chat" - Clear conversation history
+• "Help" / "Show commands" - Display this help
+
+**Personality:**
+• "Change to study" - Switch to Study Buddy
+• "Change to fitness" - Switch to Fitness Coach
+• "Change to gaming" - Switch to Gaming Helper
+• "Change to general" - Switch to General Assistant
+
+**Audio Control:**
+• "Speak faster" - Increase speaking speed
+• "Speak slower" - Decrease speaking speed
+• "Normal speed" - Reset to default speed
+• "Stop talking" - Stop current audio
+
+**Tips:**
+• Start commands with "Hey Assistant" (optional)
+• Commands work in any language!
+• If not a command, your speech goes to the AI"""
+    return help_text
+
+def generate_tts_audio(text, message_index, show_spinner=True):
+    """Generate TTS audio for a message and store in session state using macOS 'say' command"""
+    if message_index not in st.session_state.tts_audio:
+        log_file = "/tmp/tts_debug.log"
+        try:
+            import subprocess
+            import time
+
+            with open(log_file, 'a') as log:
+                log.write(f"\n=== Generating TTS for message {message_index} ===\n")
+                log.write(f"Text length: {len(text)}\n")
+
+            # Limit text length to avoid very long audio (max 1000 chars)
+            if len(text) > 1000:
+                text_to_speak = text[:1000]
+            else:
+                text_to_speak = text
+
+            # Create temporary files for AIFF and MP3
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.aiff') as temp_audio:
+                temp_aiff = temp_audio.name
+
+            temp_mp3 = temp_aiff.replace('.aiff', '.mp3')
+
+            with open(log_file, 'a') as log:
+                log.write(f"Temp AIFF: {temp_aiff}\n")
+                log.write(f"Temp MP3: {temp_mp3}\n")
+
+            # Get the appropriate voice for the selected language
+            current_lang = st.session_state.language
+            voice_name = TTS_VOICES.get(current_lang, "Samantha")  # Default to English
+
+            with open(log_file, 'a') as log:
+                log.write(f"Using voice: {voice_name} for language: {current_lang}\n")
+
+            # Use macOS 'say' command to generate audio with language-specific voice and speed
+            speaking_rate = str(st.session_state.tts_speed)
+            result = subprocess.run(
+                ['say', '-v', voice_name, '-o', temp_aiff, '-r', speaking_rate, text_to_speak],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                with open(log_file, 'a') as log:
+                    log.write(f"✗ 'say' command failed: {result.stderr}\n")
+                st.session_state.tts_audio[message_index] = None
+                return None
+
+            time.sleep(0.2)
+
+            # Try to convert AIFF to MP3 using ffmpeg for better browser compatibility
+            output_file = temp_aiff
+            audio_format = 'aiff'
+
+            try:
+                convert_result = subprocess.run(
+                    ['ffmpeg', '-i', temp_aiff, '-acodec', 'libmp3lame', '-ab', '128k', temp_mp3, '-y'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                if convert_result.returncode == 0 and os.path.exists(temp_mp3):
+                    output_file = temp_mp3
+                    audio_format = 'mp3'
+                    with open(log_file, 'a') as log:
+                        log.write(f"✓ Converted to MP3\n")
+                else:
+                    with open(log_file, 'a') as log:
+                        log.write(f"✗ ffmpeg conversion failed, using AIFF: {convert_result.stderr}\n")
+            except FileNotFoundError:
+                with open(log_file, 'a') as log:
+                    log.write(f"✗ ffmpeg not found, using AIFF format\n")
+            except Exception as conv_error:
+                with open(log_file, 'a') as log:
+                    log.write(f"✗ Conversion error: {conv_error}, using AIFF\n")
+
+            # Verify file exists and has content
+            if not os.path.exists(output_file):
+                with open(log_file, 'a') as log:
+                    log.write(f"✗ Audio file not created\n")
+                st.session_state.tts_audio[message_index] = None
+                return None
+
+            file_size = os.path.getsize(output_file)
+            with open(log_file, 'a') as log:
+                log.write(f"File size: {file_size} bytes ({audio_format})\n")
+
+            # Read the generated audio file
+            with open(output_file, 'rb') as audio_file:
+                audio_bytes = audio_file.read()
+
+            # Clean up temporary files
+            for temp_file in [temp_aiff, temp_mp3]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except Exception as cleanup_error:
+                    with open(log_file, 'a') as log:
+                        log.write(f"Warning: Could not delete {temp_file}: {cleanup_error}\n")
+
+            if len(audio_bytes) > 1000:  # Should be larger than just a header
+                st.session_state.tts_audio[message_index] = (audio_bytes, audio_format)
+                with open(log_file, 'a') as log:
+                    log.write(f"✓ SUCCESS! Audio bytes: {len(audio_bytes)} ({audio_format})\n")
+            else:
+                with open(log_file, 'a') as log:
+                    log.write(f"✗ Audio too small: {len(audio_bytes)} bytes\n")
+                st.session_state.tts_audio[message_index] = None
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            with open(log_file, 'a') as log:
+                log.write(f"✗ ERROR: {type(e).__name__}: {str(e)}\n")
+                log.write(f"{error_details}\n")
+            st.session_state.tts_audio[message_index] = None
+
+    return st.session_state.tts_audio.get(message_index)
 
 # Function to generate AI response
 def generate_response(prompt):
@@ -123,6 +343,23 @@ def generate_response(prompt):
 
         # Build conversation history with system prompt
         system_prompt = PERSONALITIES[st.session_state.personality]["system_prompt"]
+
+        # Add language instruction to system prompt
+        current_lang = st.session_state.language
+        language_names = {
+            "en-US": "English",
+            "es-ES": "Spanish",
+            "fr-FR": "French",
+            "de-DE": "German",
+            "zh-CN": "Chinese (Mandarin)",
+            "ja-JP": "Japanese",
+            "ko-KR": "Korean",
+            "it-IT": "Italian",
+            "pt-BR": "Portuguese",
+            "ru-RU": "Russian"
+        }
+        language_instruction = f"\n\nIMPORTANT: Please respond in {language_names.get(current_lang, 'English')}."
+        system_prompt_with_lang = system_prompt + language_instruction
 
         # Create chat history for context (convert roles for Gemini API)
         chat_history = []
@@ -137,8 +374,8 @@ def generate_response(prompt):
         # Start chat with history
         chat = model.start_chat(history=chat_history)
 
-        # Send message with system prompt context
-        full_prompt = f"{system_prompt}\n\nUser: {prompt}"
+        # Send message with system prompt context (including language instruction)
+        full_prompt = f"{system_prompt_with_lang}\n\nUser: {prompt}"
         if len(st.session_state.messages) == 1:  # First message
             response = chat.send_message(full_prompt)
         else:
@@ -150,13 +387,14 @@ def generate_response(prompt):
 
 # Sidebar
 with st.sidebar:
-    st.title("AI Chatbot Settings")
+    st.markdown("## ⚙️ Settings")
 
     # Personality selector
     selected_personality = st.selectbox(
-        "Choose Assistant Personality",
+        "🎭 AI Personality",
         options=list(PERSONALITIES.keys()),
-        index=list(PERSONALITIES.keys()).index(st.session_state.personality)
+        index=list(PERSONALITIES.keys()).index(st.session_state.personality),
+        help="Select the AI's personality and response style"
     )
 
     # Update personality if changed
@@ -165,59 +403,191 @@ with st.sidebar:
         st.session_state.messages = []  # Clear chat history when personality changes
         st.rerun()
 
-    # Display personality info
+    # Display personality info in compact format
     personality_info = PERSONALITIES[st.session_state.personality]
-    st.markdown(f"### {personality_info['emoji']} {personality_info['name']}")
-    st.markdown(f"*{personality_info['description']}*")
+    st.caption(f"*{personality_info['description']}*")
 
     st.markdown("---")
-    st.markdown("### 🌍 Voice Language")
 
-    # Language selector
-    selected_language = st.selectbox(
-        "Select Voice Input Language",
-        options=list(LANGUAGES.keys()),
-        index=list(LANGUAGES.values()).index(st.session_state.language)
+    # Language settings - more prominent
+    st.markdown("### 🌍 Language")
+
+    # Create language options with flags
+    language_options = [f"{LANGUAGE_FLAGS[lang]} {lang}" for lang in LANGUAGES.keys()]
+    current_lang_name = next(k for k, v in LANGUAGES.items() if v == st.session_state.language)
+    current_index = list(LANGUAGES.keys()).index(current_lang_name)
+
+    selected_language_display = st.selectbox(
+        "Select Language",
+        options=language_options,
+        index=current_index,
+        help="Language for AI responses, voice input, and voice output"
     )
+
+    # Extract language name from display string (remove flag emoji)
+    selected_language = selected_language_display.split(" ", 1)[1]
 
     # Update language if changed
     if LANGUAGES[selected_language] != st.session_state.language:
         st.session_state.language = LANGUAGES[selected_language]
+        # Clear TTS cache when language changes
+        st.session_state.tts_audio = {}
+        st.rerun()
+
+    # Show current language info
+    current_lang_code = st.session_state.language
+    st.caption(f"**Current:** {LANGUAGE_FLAGS[selected_language]} {selected_language} ({current_lang_code})")
+    st.caption("💬 AI will respond in this language")
+    st.caption("🎤 Voice input recognizes this language")
+    st.caption("🔊 Voice output uses native speaker")
 
     st.markdown("---")
-    st.markdown("### 🎤 Voice Input Tips")
-    st.info("**For best results:**\n- Speak clearly and slowly\n- Use a quiet environment\n- Keep device close to mic\n- Click once to start, once to stop")
+
+    # Voice settings in expander
+    with st.expander("🎤 Voice Tips & Commands", expanded=False):
+        st.markdown("##### 💡 Tips for Best Results")
+        st.caption("• Speak clearly and slowly")
+        st.caption("• Use a quiet environment")
+        st.caption("• Keep device close to mic")
+
+        st.markdown("##### 🎯 Voice Commands")
+        st.caption("• 'Clear chat' - Clear history")
+        st.caption("• 'Change to study' - Switch personality")
 
     st.markdown("---")
-    st.markdown("### 🎯 Voice Commands")
-    st.success("**Try these commands:**\n- 'Clear chat' - Clear history\n- 'Change to study' - Switch personality\n- 'Switch to fitness' - Change mode")
+
+    # Quick Response Mode
+    st.markdown("### 🎙️ Voice Mode")
+
+    quick_mode = st.checkbox(
+        "Quick Response Mode",
+        value=st.session_state.quick_response_mode,
+        help="Automatically clear voice input after sending, making multi-turn conversations faster"
+    )
+
+    if quick_mode != st.session_state.quick_response_mode:
+        st.session_state.quick_response_mode = quick_mode
+        st.rerun()
+
+    if st.session_state.quick_response_mode:
+        st.caption("✅ Voice input will auto-clear after each message")
+        st.caption("🔄 Just click mic and speak for each turn")
+    else:
+        st.caption("ℹ️ Normal mode - manual workflow")
+
+    st.markdown("---")
+
+    # Action buttons
+    st.markdown("### Actions")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear\nChat", use_container_width=True, help="Clear conversation history"):
+            st.session_state.messages = []
+            st.session_state.tts_audio = {}
+            st.rerun()
+
+    with col2:
+        if st.button("🔄 Reload\nAudio", use_container_width=True, help="Regenerate all audio"):
+            st.session_state.tts_audio = {}
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### About")
-    st.markdown("This chatbot uses Google's Gemini AI to provide intelligent responses.")
-    st.markdown("**Model:** gemini-2.5-flash")
-
-    if st.button("Clear Chat History"):
-        st.session_state.messages = []
-        st.rerun()
+    st.caption("**AI Model:** Gemini 2.5 Flash")
+    st.caption("**Features:** Voice chat • TTS • Multi-language")
 
 # Main chat interface
+current_lang_name = next(k for k, v in LANGUAGES.items() if v == st.session_state.language)
 st.title(f"{PERSONALITIES[st.session_state.personality]['emoji']} AI Chatbot")
-st.markdown(f"*Currently: {st.session_state.personality}*")
+
+# Show mode indicator
+mode_indicator = "🎙️ Quick Response" if st.session_state.quick_response_mode else "💬 Normal"
+st.markdown(f"*Personality: {st.session_state.personality}* • {LANGUAGE_FLAGS[current_lang_name]} *Language: {current_lang_name}* • *{mode_indicator}*")
+
+# Show language info for non-English users
+if st.session_state.language != "en-US" and len(st.session_state.messages) == 0:
+    language_greetings = {
+        "es-ES": "¡Hola! Puedes hablar conmigo en español. 🇪🇸",
+        "fr-FR": "Bonjour! Vous pouvez me parler en français. 🇫🇷",
+        "de-DE": "Hallo! Du kannst mit mir auf Deutsch sprechen. 🇩🇪",
+        "zh-CN": "你好！你可以用中文和我聊天。🇨🇳",
+        "ja-JP": "こんにちは！日本語で話せます。🇯🇵",
+        "ko-KR": "안녕하세요! 한국어로 대화할 수 있습니다. 🇰🇷",
+        "it-IT": "Ciao! Puoi parlare con me in italiano. 🇮🇹",
+        "pt-BR": "Olá! Você pode falar comigo em português. 🇧🇷",
+        "ru-RU": "Привет! Вы можете говорить со мной по-русски. 🇷🇺"
+    }
+    greeting = language_greetings.get(st.session_state.language, "")
+    if greeting:
+        st.info(f"**{greeting}**\n\nThe AI will respond in {current_lang_name}, and voice output will use a native {current_lang_name} speaker.")
 
 # Display chat messages
 chat_container = st.container()
 with chat_container:
-    for message in st.session_state.messages:
+    for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
+        # Display audio player for assistant messages (OUTSIDE chat_message)
+        if message["role"] == "assistant":
+            # Add visual separation
+            st.markdown("---")
+
+            # Check if message is very long
+            is_long_message = len(message["content"]) > 500
+
+            # Show warning for long messages
+            if is_long_message and idx not in st.session_state.tts_audio:
+                with st.spinner("🎵 Generating audio for long message..."):
+                    audio_result = generate_tts_audio(message["content"], idx, show_spinner=False)
+            else:
+                audio_result = generate_tts_audio(message["content"], idx, show_spinner=False)
+
+            # Create responsive layout for audio player
+            audio_col1, audio_col2 = st.columns([3, 1])
+
+            with audio_col1:
+                if audio_result:
+                    audio_bytes, audio_format = audio_result
+                    st.markdown("**🔊 Audio Response**")
+                    st.audio(audio_bytes, format=f"audio/{audio_format}")
+
+                    # Show format info in smaller text
+                    file_size_kb = len(audio_bytes) / 1024
+                    st.caption(f"*{audio_format.upper()} • {file_size_kb:.1f}KB*")
+
+                    # Show truncation warning if applicable
+                    if len(message["content"]) > 1000:
+                        st.caption("⚠️ *Long message truncated to 1000 characters for audio*")
+
+                elif idx in st.session_state.tts_audio:
+                    st.error("❌ Audio generation failed")
+                    if st.button(f"🔄 Retry Audio", key=f"retry_{idx}", help="Click to retry audio generation"):
+                        del st.session_state.tts_audio[idx]
+                        st.rerun()
+
+            st.markdown("")  # Add spacing
+
 # Input section (always visible at bottom)
 st.markdown("---")
+
+# Add helpful tip at the top for first-time users
+if len(st.session_state.messages) == 0:
+    if st.session_state.quick_response_mode:
+        st.info("🎙️ **Quick Response Mode Active!**\n\nClick microphone → Speak → Send → Repeat. Voice input auto-clears after each turn for faster conversations!")
+    else:
+        st.info("💬 **Get Started:** Type a message below or use voice input to chat with the AI assistant!")
+
 st.markdown("### 🎤 Voice Input")
 
-# Create columns for better layout
-col_recorder, col_status = st.columns([1, 3])
+# Show quick response mode status
+if st.session_state.quick_response_mode and len(st.session_state.messages) > 0:
+    turns = st.session_state.conversation_turn_count
+    st.caption(f"🎙️ Quick Response Mode | Turn: {turns}")
+
+# Create responsive columns for better layout
+col_recorder, col_status = st.columns([1, 2])
 with col_recorder:
     # Audio recorder
     audio_bytes = audio_recorder(
@@ -230,31 +600,39 @@ with col_recorder:
     )
 
 with col_status:
-    # Status display
+    # Status display with better formatting
     if st.session_state.transcription_status == "processing":
         st.warning("⏳ **Processing your speech...**")
     elif st.session_state.transcription_status == "ready":
         st.success("✅ **Ready!** Transcription complete.")
     elif st.session_state.transcription_status == "error":
-        st.error(f"❌ {st.session_state.error_message}")
-        if st.button("🔄 Try Again", key="retry_voice"):
-            st.session_state.transcription_status = ""
-            st.session_state.error_message = ""
-            st.rerun()
+        st.error(f"❌ **Error**\n\n{st.session_state.error_message}")
+        col_retry1, col_retry2 = st.columns([1, 1])
+        with col_retry1:
+            if st.button("🔄 Retry", key="retry_voice", use_container_width=True):
+                st.session_state.transcription_status = ""
+                st.session_state.error_message = ""
+                st.rerun()
+        with col_retry2:
+            if st.button("✖️ Dismiss", key="dismiss_voice", use_container_width=True):
+                st.session_state.transcription_status = ""
+                st.session_state.error_message = ""
+                st.rerun()
     elif st.session_state.transcription_status == "permission_denied":
         st.error("🔒 **Microphone access denied**")
-        st.info("Please allow microphone access in your browser settings and click 'Try Again'")
-        if st.button("🔄 Try Again", key="retry_permission"):
+        st.info("Allow microphone access in browser settings")
+        if st.button("🔄 Try Again", key="retry_permission", use_container_width=True):
             st.session_state.transcription_status = ""
             st.rerun()
     elif st.session_state.transcription_status == "no_speech":
         st.warning("🔇 **No speech detected**")
-        st.info("Please speak clearly after clicking the microphone")
-        if st.button("🔄 Try Again", key="retry_no_speech"):
+        st.caption("Speak clearly after clicking microphone")
+        if st.button("🔄 Try Again", key="retry_no_speech", use_container_width=True):
             st.session_state.transcription_status = ""
             st.rerun()
     else:
-        st.info("💡 **Click microphone, then speak clearly**")
+        st.info("💡 **Click microphone, then speak**")
+        st.caption("Try voice commands like 'clear chat'")
 
 # Process audio if new recording is available
 if audio_bytes:
@@ -317,6 +695,32 @@ if st.session_state.transcription_status == "processing" and audio_bytes:
                                     st.session_state.voice_text = text
                                     st.session_state.transcription_status = "ready"
                                     st.success(f"✅ **Transcribed:** {text}")
+                            elif command_type == "help":
+                                st.session_state.transcription_status = "ready"
+                                st.session_state.command_executed = True
+                                st.info(get_command_help_text())
+                            elif command_type == "speed_up":
+                                st.session_state.tts_speed = min(st.session_state.tts_speed + 25, 300)
+                                st.session_state.tts_audio = {}  # Clear cache to regenerate with new speed
+                                st.session_state.transcription_status = "ready"
+                                st.session_state.command_executed = True
+                                st.success(f"🎤 **Voice Command:** Speaking speed increased to {st.session_state.tts_speed} wpm!")
+                            elif command_type == "slow_down":
+                                st.session_state.tts_speed = max(st.session_state.tts_speed - 25, 100)
+                                st.session_state.tts_audio = {}  # Clear cache
+                                st.session_state.transcription_status = "ready"
+                                st.session_state.command_executed = True
+                                st.success(f"🎤 **Voice Command:** Speaking speed decreased to {st.session_state.tts_speed} wpm!")
+                            elif command_type == "normal_speed":
+                                st.session_state.tts_speed = 180
+                                st.session_state.tts_audio = {}  # Clear cache
+                                st.session_state.transcription_status = "ready"
+                                st.session_state.command_executed = True
+                                st.success(f"🎤 **Voice Command:** Speaking speed reset to normal (180 wpm)!")
+                            elif command_type == "stop_audio":
+                                st.session_state.transcription_status = "ready"
+                                st.session_state.command_executed = True
+                                st.warning("🎤 **Voice Command:** Audio playback cannot be stopped (browser limitation)")
                             else:
                                 # Normal transcription
                                 st.session_state.voice_text = text
@@ -377,6 +781,7 @@ if st.session_state.voice_text:
         prompt = st.session_state.voice_text
         st.session_state.voice_text = ""
         st.session_state.transcription_status = ""
+        st.session_state.conversation_turn_count += 1
 
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -386,28 +791,40 @@ if st.session_state.voice_text:
             response_text = generate_response(prompt)
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
+            # Generate TTS audio for the new message
+            message_index = len(st.session_state.messages) - 1
+            generate_tts_audio(response_text, message_index)
+
+        # In Quick Response Mode, show reminder to continue
+        if st.session_state.quick_response_mode:
+            st.toast("🎤 Quick Response Mode: Click mic for next turn!", icon="🔄")
+
         st.rerun()
 
 # Regular chat input
-if prompt := st.chat_input("Type your message here or send voice text above..."):
+st.markdown("### 💬 Text Input")
+if prompt := st.chat_input("Type your message here... or use voice input above 👆"):
     # Clear voice text when user types their own message
     st.session_state.voice_text = ""
     st.session_state.transcription_status = ""
+    st.session_state.error_message = ""
+
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Display user message
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
     # Generate AI response
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response_text = generate_response(prompt)
-            st.markdown(response_text)
+    with st.spinner("🤔 Thinking..."):
+        response_text = generate_response(prompt)
 
-            # Add assistant response to chat history
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
+
+        # Generate TTS audio for the new message
+        message_index = len(st.session_state.messages) - 1
+        with st.spinner("🎵 Generating audio..."):
+            generate_tts_audio(response_text, message_index, show_spinner=False)
+
+    st.rerun()
 
 # Footer
 st.markdown("---")
