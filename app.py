@@ -96,6 +96,9 @@ if "conversation_turn_count" not in st.session_state:
 if "tts_speed" not in st.session_state:
     st.session_state.tts_speed = 180  # Default speaking rate (words per minute)
 
+if "background_music_enabled" not in st.session_state:
+    st.session_state.background_music_enabled = False
+
 # Language configurations
 LANGUAGES = {
     "English": "en-US",
@@ -477,6 +480,26 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # Background Music Control
+    st.markdown("### 🎵 Background Music")
+
+    music_enabled = st.checkbox(
+        "Enable Calm Music",
+        value=st.session_state.background_music_enabled,
+        help="Play relaxing background music while chatting"
+    )
+
+    if music_enabled != st.session_state.background_music_enabled:
+        st.session_state.background_music_enabled = music_enabled
+        st.rerun()
+
+    if st.session_state.background_music_enabled:
+        st.caption("🎶 Calm ambient music playing")
+    else:
+        st.caption("🔇 Music off")
+
+    st.markdown("---")
+
     # Action buttons
     st.markdown("### Actions")
 
@@ -825,6 +848,22 @@ if prompt := st.chat_input("Type your message here... or use voice input above �
             generate_tts_audio(response_text, message_index, show_spinner=False)
 
     st.rerun()
+
+# Background Music Player (hidden audio element)
+if st.session_state.background_music_enabled:
+    if os.path.exists("assets/calm_background.mp3"):
+        with open("assets/calm_background.mp3", "rb") as audio_file:
+            music_bytes = audio_file.read()
+
+        # Use Streamlit's audio with autoplay via custom HTML
+        import base64
+        audio_b64 = base64.b64encode(music_bytes).decode()
+        audio_html = f"""
+        <audio autoplay loop style="display:none;">
+            <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
+        </audio>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")

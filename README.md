@@ -7,8 +7,10 @@ A powerful AI chatbot web application built with Streamlit and Google Gemini 2.5
 ### Core Functionality
 - **AI-Powered Conversations**: Leverages Google Gemini 2.5 Flash for intelligent, context-aware responses
 - **Voice Input**: Speak to the chatbot using your microphone with real-time speech-to-text transcription
+- **Voice Output (TTS)**: Multi-language text-to-speech with native speaker voices
+- **Background Music**: Optional calm ambient music for a relaxing chat experience
 - **Multi-Language Support**: Voice recognition in 10 languages including English, Spanish, French, German, Chinese, Japanese, Korean, Italian, Portuguese, and Russian
-- **Voice Commands**: Hands-free control with commands like "clear chat" and "switch personality"
+- **Voice Commands**: Hands-free control with commands like "clear chat", "switch personality", and TTS speed control
 - **Multiple AI Personalities**: Choose from 4 distinct personalities tailored for different use cases
 
 ### AI Personalities
@@ -23,6 +25,8 @@ A powerful AI chatbot web application built with Streamlit and Google Gemini 2.5
 - **Error Handling**: Comprehensive error messages with retry options for microphone permissions, silent recordings, and connection issues
 - **Responsive Design**: Clean, intuitive interface with clear organization
 - **Chat History**: Maintains conversation context throughout your session
+- **Quick Response Mode**: Streamlined voice conversation workflow for faster interactions
+- **Calm Ambiance**: Optional background music using relaxing healing frequencies (432 Hz, 528 Hz)
 
 ## Installation
 
@@ -87,16 +91,46 @@ streamlit run app.py
    - **Text Input**: Type your message in the text box at the bottom
    - **Voice Input**: Click the microphone icon, speak clearly, then click again to stop recording
    - **Change Personality**: Use the sidebar dropdown or voice command "switch to [personality]"
+   - **Background Music**: Enable calm ambient music from the sidebar for a relaxing chat experience
+
+## Background Music
+
+The app includes optional calm background music featuring healing frequencies:
+
+- **432 Hz**: Known as the "natural frequency of the universe" - promotes relaxation and grounding
+- **528 Hz**: The "love frequency" - associated with healing and DNA repair
+- **639 Hz**: Promotes connection and harmonious relationships
+
+**To enable:**
+1. Go to the sidebar
+2. Find the "🎵 Background Music" section
+3. Check "Enable Calm Music"
+4. Music will play continuously in the background while you chat
+
+The music loops seamlessly and is designed to create a peaceful, focused atmosphere for your AI conversations.
 
 ## Voice Commands
 
 Use these voice commands for hands-free control:
 
+### Chat Control
 - **"Clear chat"** or **"clear history"** - Clears the conversation history
+- **"Help"** or **"show commands"** - Display all available voice commands
+
+### Personality Switching
 - **"Change to study"** or **"switch to study"** - Switches to Study Buddy personality
 - **"Change to fitness"** or **"switch to fitness"** - Switches to Fitness Coach personality
 - **"Change to gaming"** or **"switch to gaming"** - Switches to Gaming Helper personality
 - **"Change to general"** or **"switch to general"** - Switches to General Assistant personality
+
+### Audio Control
+- **"Speak faster"** or **"speed up"** - Increase TTS speaking speed
+- **"Speak slower"** or **"slow down"** - Decrease TTS speaking speed
+- **"Normal speed"** - Reset to default speaking speed
+- **"Stop talking"** - Stop current audio (note: browser limitations apply)
+
+### Wake Word Support
+All commands can optionally start with **"Hey Assistant"**, **"Hey Chatbot"**, or **"OK Assistant"**
 
 ## Supported Languages
 
@@ -130,6 +164,8 @@ Select your preferred language from the sidebar dropdown.
 voice-ai-assistant/
 ├── app.py                 # Main application file
 ├── requirements.txt       # Python dependencies
+├── assets/
+│   └── calm_background.mp3  # Background music (432 Hz, 528 Hz healing frequencies)
 ├── .env                  # API key (not committed to Git)
 ├── .env.example          # Template for API key
 ├── .gitignore           # Git ignore rules
