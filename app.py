@@ -96,9 +96,6 @@ if "conversation_turn_count" not in st.session_state:
 if "tts_speed" not in st.session_state:
     st.session_state.tts_speed = 180  # Default speaking rate (words per minute)
 
-if "background_music_enabled" not in st.session_state:
-    st.session_state.background_music_enabled = False
-
 # Language configurations
 LANGUAGES = {
     "English": "en-US",
@@ -480,26 +477,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Background Music Control
-    st.markdown("### 🎵 Background Music")
-
-    music_enabled = st.checkbox(
-        "Enable Calm Music",
-        value=st.session_state.background_music_enabled,
-        help="Play relaxing background music while chatting"
-    )
-
-    if music_enabled != st.session_state.background_music_enabled:
-        st.session_state.background_music_enabled = music_enabled
-        st.rerun()
-
-    if st.session_state.background_music_enabled:
-        st.caption("🎶 Calm ambient music playing")
-    else:
-        st.caption("🔇 Music off")
-
-    st.markdown("---")
-
     # Action buttons
     st.markdown("### Actions")
 
@@ -574,7 +551,16 @@ with chat_container:
                 if audio_result:
                     audio_bytes, audio_format = audio_result
                     st.markdown("**🔊 Audio Response**")
-                    st.audio(audio_bytes, format=f"audio/{audio_format}")
+
+                    # Use HTML audio with autoplay for automatic playback
+                    import base64
+                    audio_b64 = base64.b64encode(audio_bytes).decode()
+                    audio_html = f"""
+                    <audio controls autoplay style="width: 100%;">
+                        <source src="data:audio/{audio_format};base64,{audio_b64}" type="audio/{audio_format}">
+                    </audio>
+                    """
+                    st.markdown(audio_html, unsafe_allow_html=True)
 
                     # Show format info in smaller text
                     file_size_kb = len(audio_bytes) / 1024
@@ -778,27 +764,11 @@ if st.session_state.transcription_status == "processing" and audio_bytes:
 
 st.markdown("---")
 
-# Display transcribed text if available
-if st.session_state.voice_text:
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.success(f"📝 **Ready to send:** {st.session_state.voice_text}")
-    with col2:
-        if st.button("🗑️ Clear", key="clear_voice"):
-            st.session_state.voice_text = ""
-            st.session_state.transcription_status = ""
-            st.rerun()
-
-st.markdown("### 💬 Text Input")
-
 # Chat input - use voice text if available, otherwise allow typing
 if st.session_state.voice_text:
     # Show a button to send the voice transcription
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        send_voice = st.button("📤 Send Voice Text", type="primary")
-    with col2:
-        st.markdown("*Or type your own message below*")
+    send_voice = st.button("📤 Send Voice Text", type="primary", use_container_width=True)
+    st.caption("*Or type your own message below ↓*")
 
     if send_voice:
         prompt = st.session_state.voice_text
@@ -810,13 +780,12 @@ if st.session_state.voice_text:
         st.session_state.messages.append({"role": "user", "content": prompt})
 
         # Generate and add assistant response
-        with st.spinner("Thinking..."):
-            response_text = generate_response(prompt)
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
+        response_text = generate_response(prompt)
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-            # Generate TTS audio for the new message
-            message_index = len(st.session_state.messages) - 1
-            generate_tts_audio(response_text, message_index)
+        # Generate TTS audio for the new message
+        message_index = len(st.session_state.messages) - 1
+        generate_tts_audio(response_text, message_index)
 
         # In Quick Response Mode, show reminder to continue
         if st.session_state.quick_response_mode:
@@ -848,22 +817,6 @@ if prompt := st.chat_input("Type your message here... or use voice input above �
             generate_tts_audio(response_text, message_index, show_spinner=False)
 
     st.rerun()
-
-# Background Music Player (hidden audio element)
-if st.session_state.background_music_enabled:
-    if os.path.exists("assets/calm_background.mp3"):
-        with open("assets/calm_background.mp3", "rb") as audio_file:
-            music_bytes = audio_file.read()
-
-        # Use Streamlit's audio with autoplay via custom HTML
-        import base64
-        audio_b64 = base64.b64encode(music_bytes).decode()
-        audio_html = f"""
-        <audio autoplay loop style="display:none;">
-            <source src="data:audio/mp3;base64,{audio_b64}" type="audio/mp3">
-        </audio>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
