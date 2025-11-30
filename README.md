@@ -1,3 +1,14 @@
+---
+title: AI Voice Chatbot
+emoji: 🎤
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.31.0"
+app_file: app.py
+pinned: false
+---
+
 # AI Voice Chatbot with Streamlit and Google Gemini
 
 A powerful AI chatbot web application built with Streamlit and Google Gemini 2.5 Flash, featuring voice input capabilities, multi-language support, and customizable AI personalities.
