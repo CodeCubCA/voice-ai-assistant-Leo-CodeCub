@@ -110,20 +110,6 @@ LANGUAGES = {
     "Russian": "ru-RU"
 }
 
-# Language mapping for TTS (macOS 'say' command voices)
-TTS_VOICES = {
-    "en-US": "Samantha",  # English
-    "es-ES": "Mónica",    # Spanish (note: accent required)
-    "fr-FR": "Thomas",    # French
-    "de-DE": "Anna",      # German
-    "zh-CN": "Tingting",  # Chinese (Mandarin) - one word
-    "ja-JP": "Kyoko",     # Japanese
-    "ko-KR": "Yuna",      # Korean
-    "it-IT": "Alice",     # Italian
-    "pt-BR": "Luciana",   # Portuguese (Brazil)
-    "ru-RU": "Milena"     # Russian
-}
-
 # Language display names with flags
 LANGUAGE_FLAGS = {
     "English": "🇺🇸",
@@ -213,16 +199,11 @@ def get_command_help_text():
     return help_text
 
 def generate_tts_audio(text, message_index, show_spinner=True):
-    """Generate TTS audio for a message and store in session state using macOS 'say' command"""
+    """Generate TTS audio for a message and store in session state using gTTS"""
     if message_index not in st.session_state.tts_audio:
-        log_file = "/tmp/tts_debug.log"
         try:
-            import subprocess
-            import time
-
-            with open(log_file, 'a') as log:
-                log.write(f"\n=== Generating TTS for message {message_index} ===\n")
-                log.write(f"Text length: {len(text)}\n")
+            from gtts import gTTS
+            import platform
 
             # Limit text length to avoid very long audio (max 1000 chars)
             if len(text) > 1000:
@@ -230,106 +211,48 @@ def generate_tts_audio(text, message_index, show_spinner=True):
             else:
                 text_to_speak = text
 
-            # Create temporary files for AIFF and MP3
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.aiff') as temp_audio:
-                temp_aiff = temp_audio.name
-
-            temp_mp3 = temp_aiff.replace('.aiff', '.mp3')
-
-            with open(log_file, 'a') as log:
-                log.write(f"Temp AIFF: {temp_aiff}\n")
-                log.write(f"Temp MP3: {temp_mp3}\n")
-
-            # Get the appropriate voice for the selected language
+            # Get the appropriate language code for gTTS
             current_lang = st.session_state.language
-            voice_name = TTS_VOICES.get(current_lang, "Samantha")  # Default to English
+            # Map language codes to gTTS language codes
+            gtts_lang_map = {
+                "en-US": "en",
+                "es-ES": "es",
+                "fr-FR": "fr",
+                "de-DE": "de",
+                "zh-CN": "zh-CN",
+                "ja-JP": "ja",
+                "ko-KR": "ko",
+                "it-IT": "it",
+                "pt-BR": "pt",
+                "ru-RU": "ru"
+            }
+            lang_code = gtts_lang_map.get(current_lang, "en")
 
-            with open(log_file, 'a') as log:
-                log.write(f"Using voice: {voice_name} for language: {current_lang}\n")
+            # Create temporary file for MP3
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_audio:
+                temp_mp3 = temp_audio.name
 
-            # Use macOS 'say' command to generate audio with language-specific voice and speed
-            speaking_rate = str(st.session_state.tts_speed)
-            result = subprocess.run(
-                ['say', '-v', voice_name, '-o', temp_aiff, '-r', speaking_rate, text_to_speak],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode != 0:
-                with open(log_file, 'a') as log:
-                    log.write(f"✗ 'say' command failed: {result.stderr}\n")
-                st.session_state.tts_audio[message_index] = None
-                return None
-
-            time.sleep(0.2)
-
-            # Try to convert AIFF to MP3 using ffmpeg for better browser compatibility
-            output_file = temp_aiff
-            audio_format = 'aiff'
-
-            try:
-                convert_result = subprocess.run(
-                    ['ffmpeg', '-i', temp_aiff, '-acodec', 'libmp3lame', '-ab', '128k', temp_mp3, '-y'],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-
-                if convert_result.returncode == 0 and os.path.exists(temp_mp3):
-                    output_file = temp_mp3
-                    audio_format = 'mp3'
-                    with open(log_file, 'a') as log:
-                        log.write(f"✓ Converted to MP3\n")
-                else:
-                    with open(log_file, 'a') as log:
-                        log.write(f"✗ ffmpeg conversion failed, using AIFF: {convert_result.stderr}\n")
-            except FileNotFoundError:
-                with open(log_file, 'a') as log:
-                    log.write(f"✗ ffmpeg not found, using AIFF format\n")
-            except Exception as conv_error:
-                with open(log_file, 'a') as log:
-                    log.write(f"✗ Conversion error: {conv_error}, using AIFF\n")
-
-            # Verify file exists and has content
-            if not os.path.exists(output_file):
-                with open(log_file, 'a') as log:
-                    log.write(f"✗ Audio file not created\n")
-                st.session_state.tts_audio[message_index] = None
-                return None
-
-            file_size = os.path.getsize(output_file)
-            with open(log_file, 'a') as log:
-                log.write(f"File size: {file_size} bytes ({audio_format})\n")
+            # Generate TTS audio using gTTS
+            tts = gTTS(text=text_to_speak, lang=lang_code, slow=False)
+            tts.save(temp_mp3)
 
             # Read the generated audio file
-            with open(output_file, 'rb') as audio_file:
+            with open(temp_mp3, 'rb') as audio_file:
                 audio_bytes = audio_file.read()
 
-            # Clean up temporary files
-            for temp_file in [temp_aiff, temp_mp3]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.unlink(temp_file)
-                except Exception as cleanup_error:
-                    with open(log_file, 'a') as log:
-                        log.write(f"Warning: Could not delete {temp_file}: {cleanup_error}\n")
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_mp3):
+                    os.unlink(temp_mp3)
+            except Exception:
+                pass
 
             if len(audio_bytes) > 1000:  # Should be larger than just a header
-                st.session_state.tts_audio[message_index] = (audio_bytes, audio_format)
-                with open(log_file, 'a') as log:
-                    log.write(f"✓ SUCCESS! Audio bytes: {len(audio_bytes)} ({audio_format})\n")
+                st.session_state.tts_audio[message_index] = (audio_bytes, 'mp3')
             else:
-                with open(log_file, 'a') as log:
-                    log.write(f"✗ Audio too small: {len(audio_bytes)} bytes\n")
                 st.session_state.tts_audio[message_index] = None
 
         except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            with open(log_file, 'a') as log:
-                log.write(f"✗ ERROR: {type(e).__name__}: {str(e)}\n")
-                log.write(f"{error_details}\n")
             st.session_state.tts_audio[message_index] = None
 
     return st.session_state.tts_audio.get(message_index)
