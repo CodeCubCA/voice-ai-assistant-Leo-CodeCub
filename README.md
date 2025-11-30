@@ -2,6 +2,15 @@
 
 A powerful AI chatbot web application built with Streamlit and Google Gemini 2.5 Flash, featuring voice input capabilities, multi-language support, and customizable AI personalities.
 
+## 🚀 Live Deployments
+
+Try the app online without any installation:
+
+- **Hugging Face Spaces**: [https://huggingface.co/spaces/Leo-codecub/voice-ai-assistant](https://huggingface.co/spaces/Leo-codecub/voice-ai-assistant)
+- **GitHub Repository**: [https://github.com/CodeCubCA/voice-ai-assistant-Leo-CodeCub](https://github.com/CodeCubCA/voice-ai-assistant-Leo-CodeCub)
+
+> **Note**: The app is deployed on Hugging Face Spaces for easy access. Simply click the link above to start chatting with AI using voice or text!
+
 ## Features
 
 ### Core Functionality
