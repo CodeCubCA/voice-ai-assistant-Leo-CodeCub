@@ -14,7 +14,7 @@ load_dotenv()
 
 # Hugging Face API configuration
 HF_API_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct"
+HF_API_URL = "https://router.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct"
 
 # Personality prompts
 PERSONALITIES = {
