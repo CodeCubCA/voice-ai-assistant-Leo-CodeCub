@@ -9,9 +9,9 @@ app_file: app.py
 pinned: false
 ---
 
-# AI Voice Chatbot with Streamlit and Google Gemini
+# AI Voice Chatbot with Streamlit and Hugging Face
 
-A powerful AI chatbot web application built with Streamlit and Google Gemini 2.5 Flash, featuring voice input capabilities, multi-language support, and customizable AI personalities.
+A powerful AI chatbot web application built with Streamlit and Hugging Face Llama 3.2, featuring voice input capabilities, multi-language support, and customizable AI personalities.
 
 ## 🚀 Live Deployments
 
@@ -25,7 +25,7 @@ Try the app online without any installation:
 ## Features
 
 ### Core Functionality
-- **AI-Powered Conversations**: Leverages Google Gemini 2.5 Flash for intelligent, context-aware responses
+- **AI-Powered Conversations**: Leverages Hugging Face Llama 3.2 for intelligent, context-aware responses
 - **Voice Input**: Speak to the chatbot using your microphone with real-time speech-to-text transcription
 - **Voice Output (TTS)**: Multi-language text-to-speech with native speaker voices and automatic playback
 - **Multi-Language Support**: Voice recognition in 10 languages including English, Spanish, French, German, Chinese, Japanese, Korean, Italian, Portuguese, and Russian
@@ -50,7 +50,7 @@ Try the app online without any installation:
 
 ### Prerequisites
 - Python 3.8 or higher
-- A Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
+- A Hugging Face API token with write permissions ([Get one here](https://huggingface.co/settings/tokens))
 - FFmpeg (required for audio processing)
 
 ### FFmpeg Installation
@@ -87,11 +87,11 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Set up your API key:**
+4. **Set up your API token:**
    - Create a `.env` file in the project root
-   - Add your Gemini API key:
+   - Add your Hugging Face API token:
 ```
-GEMINI_API_KEY=your_gemini_api_key_here
+HUGGINGFACE_TOKEN=your_huggingface_token_here
 ```
 
 ## Usage

@@ -1,5 +1,4 @@
 import streamlit as st
-import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from audio_recorder_streamlit import audio_recorder
@@ -8,12 +7,14 @@ import io
 from pydub import AudioSegment
 import pyttsx3
 import tempfile
+import requests
 
 # Load environment variables
 load_dotenv()
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Hugging Face API configuration
+HF_API_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+HF_API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct"
 
 # Personality prompts
 PERSONALITIES = {
@@ -259,11 +260,8 @@ def generate_tts_audio(text, message_index, show_spinner=True):
 
 # Function to generate AI response
 def generate_response(prompt):
-    """Generate AI response for the given prompt"""
+    """Generate AI response for the given prompt using Hugging Face API"""
     try:
-        # Initialize the model
-        model = genai.GenerativeModel('gemini-2.5-flash')
-
         # Build conversation history with system prompt
         system_prompt = PERSONALITIES[st.session_state.personality]["system_prompt"]
 
@@ -284,27 +282,57 @@ def generate_response(prompt):
         language_instruction = f"\n\nIMPORTANT: Please respond in {language_names.get(current_lang, 'English')}."
         system_prompt_with_lang = system_prompt + language_instruction
 
-        # Create chat history for context (convert roles for Gemini API)
-        chat_history = []
+        # Create conversation messages for HuggingFace API
+        messages = []
+
+        # Add system prompt as first message
+        messages.append({
+            "role": "system",
+            "content": system_prompt_with_lang
+        })
+
+        # Add conversation history
         for msg in st.session_state.messages[:-1]:  # Exclude the latest user message
-            # Gemini uses "user" and "model" roles, not "assistant"
-            role = "model" if msg["role"] == "assistant" else msg["role"]
-            chat_history.append({
-                "role": role,
-                "parts": [msg["content"]]
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
             })
 
-        # Start chat with history
-        chat = model.start_chat(history=chat_history)
+        # Add current user message
+        messages.append({
+            "role": "user",
+            "content": prompt
+        })
 
-        # Send message with system prompt context (including language instruction)
-        full_prompt = f"{system_prompt_with_lang}\n\nUser: {prompt}"
-        if len(st.session_state.messages) == 1:  # First message
-            response = chat.send_message(full_prompt)
+        # Call Hugging Face Inference API
+        headers = {
+            "Authorization": f"Bearer {HF_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "inputs": messages,
+            "parameters": {
+                "max_new_tokens": 500,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "return_full_text": False
+            }
+        }
+
+        response = requests.post(HF_API_URL, headers=headers, json=payload, timeout=30)
+
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "Sorry, I couldn't generate a response.")
+            elif isinstance(result, dict):
+                return result.get("generated_text", "Sorry, I couldn't generate a response.")
+            else:
+                return "Sorry, I couldn't generate a response."
         else:
-            response = chat.send_message(prompt)
+            return f"Error: {response.status_code} - {response.text}"
 
-        return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
