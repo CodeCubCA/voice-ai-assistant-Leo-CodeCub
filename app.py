@@ -14,7 +14,7 @@ load_dotenv()
 
 # Hugging Face API configuration
 HF_API_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-HF_API_URL = "https://router.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct"
+HF_API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
 
 # Personality prompts
 PERSONALITIES = {
