@@ -14,7 +14,7 @@ load_dotenv()
 
 # Hugging Face API configuration
 HF_API_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
+HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
 
 # Personality prompts
 PERSONALITIES = {
